@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">QuickWar</string>
+    <string name="action_settings">Settings</string>
+    <string name="begin_game">Join Game</string>
+    <string name="how_to_play">How To Play</string>
+    <string name="game_instructions_go_here">Game instructions go here</string>
+</resources>
