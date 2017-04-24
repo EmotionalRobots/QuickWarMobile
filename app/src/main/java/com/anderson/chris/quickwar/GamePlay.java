@@ -1,9 +1,12 @@
 package com.anderson.chris.quickwar;
 
+import android.os.CountDownTimer;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -17,16 +20,16 @@ import com.firebase.client.ValueEventListener;
 public class GamePlay extends AppCompatActivity {
 
     Button btnFlipCard, btnSendCard;
-    TextView txtCardsRemainingNum;
+    TextView txtCardsRemainingNum, txtWarAlert;
     boolean isPlayer1;
     int myDeckSize = 26;
     int sentCardsNum = 0;
-    int cardsInDeck = 52;
     ImageView imgCardDown, imgNewCard;
     private static final String EXTRA_PLAYER_NAME = "EXTRA_PLAYER_NAME";
     private static final String BUNDLE_EXTRAS = "BUNDLE_EXTRAS";
     private static final String EXTRA_GAME_ID = "EXTRA_GAME_ID";
-    Firebase mGameDatabase, mRootDatabase, mSentCardsRef, mPlayer1Database, mPlayer2Database, myDatabase;
+    Firebase mGameDatabase, mRootDatabase, mSentCardsRef, mPlayer1Database, mPlayer2Database, myDatabase, mNumOfCardsRemainingDatabase;
+
     int myPlayerNumber = 0;
     String gameID;
     String playerName;
@@ -48,6 +51,7 @@ public class GamePlay extends AppCompatActivity {
         Firebase.setAndroidContext(this);
         mRootDatabase = new Firebase("https://quickwar-a9fde.firebaseio.com/");
         mGameDatabase = new Firebase("https://quickwar-a9fde.firebaseio.com/" + gameID);
+        mNumOfCardsRemainingDatabase = new Firebase("https://quickwar-a9fde.firebaseio.com/" + gameID + "/NumOfCardsRemaining");
         mPlayer1Database = new Firebase("https://quickwar-a9fde.firebaseio.com/" + gameID + "/Player1");
         mPlayer2Database = new Firebase("https://quickwar-a9fde.firebaseio.com/" + gameID + "/Player2");
 
@@ -60,7 +64,6 @@ public class GamePlay extends AppCompatActivity {
 
     public void whatPlayerAmI() {
         Firebase numDatabase = mGameDatabase.child("NumOfPlayers");
-
         numDatabase.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
@@ -74,6 +77,7 @@ public class GamePlay extends AppCompatActivity {
         });
     }
 
+    //Assign player1/player 2 values
     public void changeMyPlayerNumber(int x) {
         x++;
         myPlayerNumber = x;
@@ -146,20 +150,28 @@ public class GamePlay extends AppCompatActivity {
 
     //attempts to send card. Will only send if you have not already sent one yet
     public void sendCardAttempt() {
-        //check if your card has been processed yet
+        //check if your last card has been processed yet
         if (isPlayer1) {
             Firebase temp = mGameDatabase.child("SCORE").child("PLAYER1").child("PLAY_CHECK");
 
             temp.addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
                 public void onDataChange(DataSnapshot dataSnapshot) {
+
+                    try{
                     String x = dataSnapshot.getValue(String.class);
                     if (x.equals("TRUE")) {
                         Toast.makeText(getBaseContext(), "Please wait!",
-                                Toast.LENGTH_LONG).show();
+                                Toast.LENGTH_SHORT).show();
                     } else {
                         sendCard();
                     }
+
+                }
+
+                    catch(Exception e){
+
+                }
                 }
 
                 @Override
@@ -176,12 +188,19 @@ public class GamePlay extends AppCompatActivity {
             temp.addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
                 public void onDataChange(DataSnapshot dataSnapshot) {
-                    String x = dataSnapshot.getValue(String.class);
-                    if (x.equals("TRUE")) {
-                        Toast.makeText(getBaseContext(), "Please wait!",
-                                Toast.LENGTH_LONG).show();
-                    } else {
-                        sendCard();
+
+                    try {
+                        String x = dataSnapshot.getValue(String.class);
+                        if (x.equals("TRUE")) {
+                            Toast.makeText(getBaseContext(), "Please wait!",
+                                    Toast.LENGTH_SHORT).show();
+                        } else {
+                            sendCard();
+                        }
+                    }
+
+                    catch(Exception e){
+
                     }
                 }
 
@@ -196,26 +215,22 @@ public class GamePlay extends AppCompatActivity {
     }
 
 
+    //actually sends the card
     public void sendCard() {
         sentCardsNum++;
         myDeckSize--;
         imgNewCard.setImageResource(android.R.color.transparent);
-        if (myDeckSize >= 0) {
+        if (myDeckSize >= -1) {
             setCurrentCard();
             Firebase numOfCardsSentDatabase;
 
             if (isPlayer1) {
-                numOfCardsSentDatabase = mPlayer1Database.child("NumOfCardsRemaining");
                 mPlayer1Database.child("LastSentCard").setValue(currentCard);
                 mGameDatabase.child("SCORE").child("PLAYER1").child("PLAY_CHECK").setValue("TRUE");
             } else {
-                numOfCardsSentDatabase = mPlayer2Database.child("NumOfCardsRemaining");
                 mPlayer2Database.child("LastSentCard").setValue(currentCard);
                 mGameDatabase.child("SCORE").child("PLAYER2").child("PLAY_CHECK").setValue("TRUE");
             }
-            numOfCardsSentDatabase.setValue(myDeckSize);
-            txtCardsRemainingNum.setText(myDeckSize + "");
-
         } else
             finish();
     }
@@ -227,8 +242,8 @@ public class GamePlay extends AppCompatActivity {
         imgCardDown = (ImageView) findViewById(R.id.imgCardDown);
         txtCardsRemainingNum = (TextView) findViewById(R.id.txtCardsRemainingNum);
         txtCardsRemainingNum.setText(myDeckSize + "");
+        txtWarAlert = (TextView) findViewById(R.id.txtWarAlert);
 
-        //deckSize = cardList.size();
 
         btnFlipCard.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -243,6 +258,67 @@ public class GamePlay extends AppCompatActivity {
                 sendCardAttempt();
             }
         });
+        mNumOfCardsRemainingDatabase.setValue(26);
 
+        //main purpose of this is to listen for when a war happens, so that myDeckSize will reflect the -4 cards from the war
+        mNumOfCardsRemainingDatabase.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                myDeckSize = dataSnapshot.getValue(Integer.class);
+                txtCardsRemainingNum.setText(myDeckSize + "");
+            }
+
+            @Override
+            public void onCancelled(FirebaseError firebaseError) {
+
+            }
+        });
+
+        checkWar();
+    }
+
+    public void checkWar() {
+
+        Firebase temp = mGameDatabase.child("SCORE").child("ISWAR");
+        temp.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+
+
+                String x = dataSnapshot.getValue(String.class);
+                try {
+                    if (x.equals("TRUE")) {
+                        showWarAlert();
+                    }
+                } catch (Exception e) {
+
+                }
+            }
+
+            @Override
+            public void onCancelled(FirebaseError firebaseError) {
+
+            }
+        });
+    }
+
+    public void showWarAlert() {
+
+        new CountDownTimer(3000, 100) {
+
+            public void onTick(long millisUntilFinished) {
+                txtWarAlert.setText("WAR!!!");
+                Animation anim = new AlphaAnimation(0.0f, 1.0f);
+                anim.setDuration(3); //You can manage the blinking time with this parameter
+                anim.setStartOffset(20);
+                anim.setRepeatMode(Animation.REVERSE);
+                anim.setRepeatCount(Animation.INFINITE);
+                txtWarAlert.startAnimation(anim);
+            }
+
+            public void onFinish() {
+                txtWarAlert.setText("");
+            }
+        }.start();
     }
 }
